@@ -92,6 +92,7 @@ public class GobblinServiceManagerTest {
       .setFlowName(MockedSpecCompiler.UNCOMPILABLE_FLOW);
 
   private static final String TEST_SCHEDULE = "0 1/0 * ? * *";
+  private static final String TEST_SCHEDULE_2 = "0%201/0%20*%20?%20*%20*";
   private static final String TEST_TEMPLATE_URI = "FS:///templates/test.template";
   private static final String TEST_DUMMY_GROUP_NAME = "dummyGroup";
   private static final String TEST_DUMMY_FLOW_NAME = "dummyFlow";
@@ -122,6 +123,7 @@ public class GobblinServiceManagerTest {
     testingServer = new TestingServer(true);
 
     flowProperties.put("param1", "value1");
+    flowProperties.put("param2", "value2 with space");
     flowProperties.put(ServiceConfigKeys.FLOW_SOURCE_IDENTIFIER_KEY, TEST_SOURCE_NAME);
     flowProperties.put(ServiceConfigKeys.FLOW_DESTINATION_IDENTIFIER_KEY, TEST_SINK_NAME);
 
@@ -367,7 +369,8 @@ public class GobblinServiceManagerTest {
   @Test (dependsOnMethods = "testCreateAgain", enabled = false)
   public void testGetFilteredFlows() throws Exception {
     // Not implemented for FsSpecStore
-
+    Assert.assertTrue(this.flowConfigClient.getFlowConfigs(TEST_GROUP_NAME, null, null, null, null, null,
+        null, null, null, null) != null);
     Collection<FlowConfig> flowConfigs = this.flowConfigClient.getFlowConfigs(TEST_GROUP_NAME, null, null, null, null, null,
 null, null, null, null);
     Assert.assertEquals(flowConfigs.size(), 2);
@@ -379,6 +382,17 @@ null, null, null, null);
     flowConfigs = this.flowConfigClient.getFlowConfigs(null, null, null, null, null, null,
         TEST_SCHEDULE, null, null, null);
     Assert.assertEquals(flowConfigs.size(), 2);
+
+    // Test white space decoding from curli requests for schedule and property-filter
+    FlowConfig flowConfig = new FlowConfig().setId(TEST_FLOW_ID2).setTemplateUris(TEST_TEMPLATE_URI)
+        .setSchedule(new Schedule().setCronSchedule(TEST_SCHEDULE_2)).setProperties(new StringMap(flowProperties));
+    this.flowConfigClient.createFlowConfig(flowConfig);
+    flowConfigs = this.flowConfigClient.getFlowConfigs(null, null, null, null, null, null,
+        TEST_SCHEDULE_2, null, null, "param2=value2%20with%20space");
+    FlowConfig returnedConfig = flowConfigs.iterator().next();
+    Assert.assertEquals(flowConfigs.size(), 1);
+    Assert.assertEquals(returnedConfig.getSchedule().getCronSchedule(), TEST_SCHEDULE);
+    Assert.assertEquals(returnedConfig.getProperties().get("param2"), "value2 with space");
   }
 
   @Test (dependsOnMethods = "testGet")
