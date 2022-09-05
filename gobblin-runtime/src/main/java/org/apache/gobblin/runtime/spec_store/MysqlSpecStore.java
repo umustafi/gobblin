@@ -17,10 +17,6 @@
 
 package org.apache.gobblin.runtime.spec_store;
 
-import com.google.common.base.Charsets;
-import com.google.common.io.ByteStreams;
-import com.google.gson.Gson;
-import com.typesafe.config.Config;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -28,7 +24,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
+
+import com.google.common.base.Charsets;
+import com.google.common.io.ByteStreams;
+import com.google.gson.Gson;
+import com.typesafe.config.Config;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.apache.gobblin.configuration.ConfigurationKeys;
 import org.apache.gobblin.runtime.api.FlowSpec;
 import org.apache.gobblin.runtime.api.Spec;
@@ -38,7 +41,8 @@ import org.apache.gobblin.runtime.api.SpecStore;
 import org.apache.gobblin.service.ServiceConfigKeys;
 import org.apache.gobblin.util.ConfigUtils;
 
-import static org.apache.gobblin.service.ServiceConfigKeys.*;
+import static org.apache.gobblin.service.ServiceConfigKeys.FLOW_DESTINATION_IDENTIFIER_KEY;
+import static org.apache.gobblin.service.ServiceConfigKeys.FLOW_SOURCE_IDENTIFIER_KEY;
 
 
 /**
@@ -60,6 +64,7 @@ public class MysqlSpecStore extends MysqlBaseSpecStore {
       + "user_to_proxy, source_identifier, destination_identifier, schedule, tag, isRunImmediately, owning_group, spec, spec_json) "
       + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE spec = VALUES(spec), spec_json = VALUES(spec_json)";
   private static final String SPECIFIC_GET_STATEMENT_BASE = "SELECT spec_uri, spec, spec_json FROM %s WHERE ";
+  private static final String GET_SPEC_MATCHING_URI_SUFFIX = "spec_uri = ?";
   private static final String SPECIFIC_GET_ALL_STATEMENT = "SELECT spec_uri, spec, spec_json FROM %s";
   private static final String SPECIFIC_CREATE_TABLE_STATEMENT = "CREATE TABLE IF NOT EXISTS %s (spec_uri VARCHAR("
       + FlowSpec.Utils.maxFlowSpecUriLength()
@@ -118,6 +123,11 @@ public class MysqlSpecStore extends MysqlBaseSpecStore {
     protected String getTablelessGetAllStatement() { return MysqlSpecStore.SPECIFIC_GET_ALL_STATEMENT; }
     @Override
     protected String getTablelessCreateTableStatement() { return MysqlSpecStore.SPECIFIC_CREATE_TABLE_STATEMENT; }
+    protected String getMatchingSpecUriStatement() { return getStatementBase + MysqlSpecStore.GET_SPEC_MATCHING_URI_SUFFIX;}
+
+    public void completeMatchingSpecUriGetPreparedStatement(PreparedStatement statement, String spec_uri) throws SQLException {
+      statement.setString(1, spec_uri);
+    }
   }
 
 
@@ -142,5 +152,20 @@ public class MysqlSpecStore extends MysqlBaseSpecStore {
       specSearchObject.completePreparedStatement(statement);
       return retrieveSpecs(statement);
     });
+  }
+
+  public Spec getSpecMatchingSpecUri(String specUri)
+      throws IOException { // TODO print error log instead maybe
+    SpecificSqlStatements statements = (SpecificSqlStatements) createSqlStatements();
+    Spec resultSpec = withPreparedStatement(statements.getMatchingSpecUriStatement(), statement -> {
+      statements.completeMatchingSpecUriGetPreparedStatement(statement, specUri);
+      try (ResultSet resultSet = statement.executeQuery()) {
+        Spec spec = sqlStatements.extractSpec(resultSet);
+        resultSet.close();
+        return spec;
+      }
+//      statement.close();
+    });
+    return resultSpec;
   }
 }
