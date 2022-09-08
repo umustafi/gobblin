@@ -31,10 +31,13 @@ import org.apache.orc.mapred.OrcValue;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Optional;
 
+import lombok.extern.slf4j.Slf4j;
+
 
 /**
  * Check record duplicates in reducer-side.
  */
+@Slf4j
 public class OrcKeyDedupReducer extends RecordKeyDedupReducerBase<OrcKey, OrcValue, NullWritable, OrcValue> {
   @VisibleForTesting
   public static final String ORC_DELTA_SCHEMA_PROVIDER =
@@ -59,8 +62,14 @@ public class OrcKeyDedupReducer extends RecordKeyDedupReducerBase<OrcKey, OrcVal
     /* Map from hash of value(Typed in OrcStruct) object to its times of duplication*/
     Map<Integer, Integer> valuesToRetain = new HashMap<>();
     int valueHash = 0;
+    int counter = 0;
 
     for (OrcValue value : values) {
+      counter++;
+      if (counter % 1000 == 0) {
+        log.info("Reduced %s values for key %s", counter, key);
+      }
+
       valueHash = ((OrcStruct) value.value).hashCode();
       if (valuesToRetain.containsKey(valueHash)) {
         valuesToRetain.put(valueHash, valuesToRetain.get(valueHash) + 1);
