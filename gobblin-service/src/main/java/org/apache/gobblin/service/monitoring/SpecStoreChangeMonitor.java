@@ -138,7 +138,7 @@ public class SpecStoreChangeMonitor extends HighLevelConsumer {
 
     // If event is a heartbeat type then log it and skip processing
     if (operation == "HEARTBEAT") {
-      log.debug("Received heartbeat message from time {}", timestamp);
+      log.info("Received heartbeat message from time {}", timestamp);
       return;
     }
 
