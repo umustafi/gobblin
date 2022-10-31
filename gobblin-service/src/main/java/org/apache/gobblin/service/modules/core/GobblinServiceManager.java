@@ -597,12 +597,15 @@ public class GobblinServiceManager implements ApplicationLauncher, StandardMetri
     Options options = buildOptions();
     try {
       CommandLine cmd = new DefaultParser().parse(options, args);
+      LOGGER.info("In main method of service manager");
       if (!cmd.hasOption(SERVICE_NAME_OPTION_NAME)) {
         printUsage(options);
+        LOGGER.info("doesn't have service name option name");
         System.exit(1);
       }
 
       if (!cmd.hasOption(SERVICE_ID_OPTION_NAME)) {
+        LOGGER.info("doesn't have service id option nane");
         printUsage(options);
         LOGGER.warn("Please assign globally unique ID for a GobblinServiceManager instance, or it will use default ID");
       }
@@ -613,12 +616,13 @@ public class GobblinServiceManager implements ApplicationLauncher, StandardMetri
       }
 
       Config config = ConfigFactory.load();
-
+      LOGGER.info("Loaded config {}", config);
       GobblinServiceConfiguration serviceConfiguration =
           new GobblinServiceConfiguration(cmd.getOptionValue(SERVICE_NAME_OPTION_NAME), getServiceId(cmd), config,
               null);
-
+      LOGGER.info("after configuration step {}", serviceConfiguration);
       GobblinServiceGuiceModule guiceModule = new GobblinServiceGuiceModule(serviceConfiguration);
+      LOGGER.info("Guice module initialized");
       Injector injector = Guice.createInjector(guiceModule);
 
       try (GobblinServiceManager gobblinServiceManager = injector.getInstance(GobblinServiceManager.class)) {

@@ -127,7 +127,7 @@ public abstract class BaseFlowToJobSpecCompiler implements SpecCompiler {
       this.dataAuthorizationTimer = Optional.absent();
     }
 
-    this.warmStandbyEnabled = ConfigUtils.getBoolean(config, ServiceConfigKeys.GOBBLIN_SERVICE_WARM_STANDBY_ENABLED_KEY, false);
+    this.warmStandbyEnabled = ConfigUtils.getBoolean(config, ServiceConfigKeys.GOBBLIN_SERVICE_WARM_STANDBY_ENABLED_KEY, true);
 
     this.topologySpecMap = Maps.newConcurrentMap();
     this.config = config;

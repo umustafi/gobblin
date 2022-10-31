@@ -68,6 +68,7 @@ public abstract class AbstractBaseKafkaConsumerClient implements GobblinKafkaCon
   public AbstractBaseKafkaConsumerClient(Config config) {
     this.config = config;
     this.brokers = ConfigUtils.getStringList(config, ConfigurationKeys.KAFKA_BROKERS);
+    log.info("AbstractBaseKafka... brokers list is {} for config", this.brokers, config);
     if (this.brokers.isEmpty()) {
       throw new IllegalArgumentException("Need to specify at least one Kafka broker.");
     }

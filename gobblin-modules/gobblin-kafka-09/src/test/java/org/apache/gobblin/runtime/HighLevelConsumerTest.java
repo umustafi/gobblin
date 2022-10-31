@@ -44,6 +44,7 @@ import org.apache.gobblin.kafka.writer.Kafka09DataWriter;
 import org.apache.gobblin.kafka.writer.KafkaWriterConfigurationKeys;
 import org.apache.gobblin.runtime.kafka.HighLevelConsumer;
 import org.apache.gobblin.runtime.kafka.MockedHighLevelConsumer;
+import org.apache.gobblin.service.monitoring.SpecStoreChangeMonitor;
 import org.apache.gobblin.source.extractor.extract.kafka.KafkaPartition;
 import org.apache.gobblin.test.TestUtils;
 import org.apache.gobblin.testing.AssertWithBackoff;
@@ -154,6 +155,16 @@ public class HighLevelConsumerTest extends KafkaTestBase {
     }
     consumer.shutDown();
   }
+
+  @Test
+  public void testConfig throws Exception {
+    Properties consumerProps = new Properties();
+    consumerProps.setProperty(ConfigurationKeys.KAFKA_BROKERS, _kafkaBrokers);
+    consumerProps.setProperty(HighLevelConsumer.CONSUMER_CLIENT_FACTORY_CLASS_KEY, "com.linkedin.gobblinkafka.client.SpecChangeDataStreamConsumerClient");
+    MockedHighLevelConsumer consumer = new MockedHighLevelConsumer(TOPIC, ConfigUtils.propertiesToConfig(consumerProps),
+        NUM_PARTITIONS);
+  }
+
 
   private List<byte[]> createByteArrayMessages() {
     List<byte[]> records = Lists.newArrayList();

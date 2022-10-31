@@ -27,6 +27,8 @@ import java.sql.SQLException;
 import java.util.Collection;
 import java.util.HashSet;
 import javax.sql.DataSource;
+
+import org.apache.gobblin.config.ConfigBuilder;
 import org.apache.gobblin.configuration.ConfigurationKeys;
 import org.apache.gobblin.metastore.MysqlStateStore;
 import org.apache.gobblin.runtime.api.DagActionStore;
@@ -56,6 +58,14 @@ public class MysqlDagActionStore implements DagActionStore {
 
   @Inject
   public MysqlDagActionStore(Config config) throws IOException {
+    //todo: remove this after e2e test
+    Config fallback = ConfigBuilder.create()
+        .addPrimitive("MysqlDagActionStore.state.store.db.table", "dag_action_store")
+        .addPrimitive("MysqlDagActionStore.state.store.db.url", "jdbc:mysql://makto-db-034.stg.linkedin.com:3306/shared_gobblin")
+        .addPrimitive("MysqlDagActionStore.state.store.db.password", "ENC(5tnbS/1MTvt8hbSPAL7NUQ==)")
+        .addPrimitive("MysqlDagActionStore.state.store.db.user", "gb_stg_admin")
+        .build();
+    config = config.withFallback(fallback);
     if (config.hasPath(CONFIG_PREFIX)) {
       config = config.getConfig(CONFIG_PREFIX).withFallback(config);
     } else {

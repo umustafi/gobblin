@@ -104,7 +104,7 @@ public class SpecStoreChangeMonitor extends HighLevelConsumer {
     Long timestamp = value.getTimestamp();
     String operation = value.getOperationType().name();
 
-    log.debug("Processing message where specUri is {} timestamp is {} operation is {}", key, timestamp, operation);
+    log.info("Processing message where specUri is {} timestamp is {} operation is {}", key, timestamp, operation);
 
     String changeIdentifier = timestamp + key;
     if (!ChangeMonitorUtils.shouldProcessMessage(changeIdentifier, specChangesSeenCache, operation,

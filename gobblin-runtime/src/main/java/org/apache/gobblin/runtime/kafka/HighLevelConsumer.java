@@ -119,9 +119,11 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
           .build());
 
   public HighLevelConsumer(String topic, Config config, int numThreads) {
+    log.info("HighLevelConsumer gets config {}", config);
     this.topic = topic;
     this.numThreads = numThreads;
     this.config = config.withFallback(FALLBACK);
+    log.info("HighLevelConsumer after fallback {}", this.config);
     this.gobblinKafkaConsumerClient = createConsumerClient(this.config);
     assignTopicPartitions();
     this.consumerExecutor = Executors.newSingleThreadScheduledExecutor(ExecutorsUtils.newThreadFactory(Optional.of(log), Optional.of("HighLevelConsumerThread")));
@@ -139,7 +141,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
 
   protected GobblinKafkaConsumerClient createConsumerClient(Config config) {
     String kafkaConsumerClientClass = config.getString(CONSUMER_CLIENT_FACTORY_CLASS_KEY);
-
+    log.info("creating consumer client of class {} and contains config {}", kafkaConsumerClientClass, config);
     try {
       Class clientFactoryClass = Class.forName(kafkaConsumerClientClass);
       final GobblinKafkaConsumerClient.GobblinKafkaConsumerClientFactory factory =
