@@ -34,7 +34,6 @@ import org.apache.gobblin.util.reflection.GobblinConstructorUtils;
  */
 @Slf4j
 public class SpecStoreChangeMonitorFactory implements Provider<SpecStoreChangeMonitor> {
-  static final String SPEC_STORE_CHANGE_MONITOR_CLASS_NAME = "org.apache.gobblin.service.monitoring.SpecStoreChangeMonitor";
   static final String SPEC_STORE_CHANGE_MONITOR_NUM_THREADS_KEY = "numThreads";
 
   private final Config config;
@@ -50,8 +49,7 @@ public class SpecStoreChangeMonitorFactory implements Provider<SpecStoreChangeMo
     String topic = ""; // Pass empty string because we expect underlying client to dynamically determine the Kafka topic
     int numThreads = ConfigUtils.getInt(specStoreChangeConfig, SPEC_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 5);
 
-    return (SpecStoreChangeMonitor) GobblinConstructorUtils.invokeConstructor(
-        Class.forName(SPEC_STORE_CHANGE_MONITOR_CLASS_NAME), topic, specStoreChangeConfig, numThreads);
+    return new SpecStoreChangeMonitor(topic, specStoreChangeConfig, numThreads);
   }
 
   @Override
