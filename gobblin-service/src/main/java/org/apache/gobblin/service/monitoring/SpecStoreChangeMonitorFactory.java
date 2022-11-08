@@ -25,6 +25,9 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 import lombok.extern.slf4j.Slf4j;
 
+import org.apache.gobblin.config.ConfigBuilder;
+import org.apache.gobblin.configuration.ConfigurationKeys;
+import org.apache.gobblin.runtime.kafka.HighLevelConsumer;
 import org.apache.gobblin.util.ConfigUtils;
 import org.apache.gobblin.util.reflection.GobblinConstructorUtils;
 
@@ -45,7 +48,28 @@ public class SpecStoreChangeMonitorFactory implements Provider<SpecStoreChangeMo
 
   private SpecStoreChangeMonitor createSpecStoreChangeMonitor()
       throws ReflectiveOperationException {
-    Config specStoreChangeConfig = config.getConfig(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX);
+    // TODO: remove after e2e test
+    Config fallback = ConfigBuilder.create()
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + SPEC_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 2)
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".ligobblin.shaded." + ConfigurationKeys.KAFKA_BROKERS, "fakeBroker")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".kafka.schema.registry.url", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.brooklinUri", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.name", "gobblin-flow-spec-updates")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.completenessEnabled", "true")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".ligobblin.shaded." + HighLevelConsumer.CONSUMER_CLIENT_FACTORY_CLASS_KEY, "com.linkedin.gobblinkafka.client.SpecChangeDataStreamConsumerClient$Factory")
+        .build();
+    Config configWithFallBack = config.withFallback(fallback);
+
+    log.info("SpecStoreChangeMonitorFactory fallback config is {}", fallback);
+
+    if (configWithFallBack.hasPath(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX)) {
+      log.info("SpecStoreChangeMonitorFactory contains prefix after giving fallback");
+    } else {
+      log.info("SpecStoreChangeMonitorFactory Please provide fallback");
+    }
+    Config specStoreChangeConfig = configWithFallBack.getConfig(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX);
+
+    log.info("Extracted the sub config {}", specStoreChangeConfig);
     String topic = ""; // Pass empty string because we expect underlying client to dynamically determine the Kafka topic
     int numThreads = ConfigUtils.getInt(specStoreChangeConfig, SPEC_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 5);
 

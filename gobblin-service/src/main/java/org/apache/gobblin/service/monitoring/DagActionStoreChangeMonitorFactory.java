@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.apache.gobblin.config.ConfigBuilder;
 import org.apache.gobblin.configuration.ConfigurationKeys;
+import org.apache.gobblin.kafka.client.GobblinKafkaConsumerClient;
 import org.apache.gobblin.runtime.kafka.HighLevelConsumer;
 import org.apache.gobblin.util.ConfigUtils;
 import org.apache.gobblin.util.reflection.GobblinConstructorUtils;
@@ -49,9 +50,11 @@ public class DagActionStoreChangeMonitorFactory implements Provider<DagActionSto
     // TODO: remove after e2e test
     Config fallback = ConfigBuilder.create()
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + DAG_ACTION_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 2)
-        .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + ConfigurationKeys.KAFKA_BROKERS, "fakeBroker2")
+        .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".ligobblin.shaded." + ConfigurationKeys.KAFKA_BROKERS, "fakeBroker2")
+        .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".kafka.schema.registry.url", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.brooklinUri", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.name", "gobblin-dag-action-updates")
+        .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.completenessEnabled", "true")
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".ligobblin.shaded." + HighLevelConsumer.CONSUMER_CLIENT_FACTORY_CLASS_KEY, "com.linkedin.gobblinkafka.client.DagActionChangeDataStreamConsumerClient$Factory")
         .build();
     Config configWithFallBack = config.withFallback(fallback);
@@ -65,8 +68,6 @@ public class DagActionStoreChangeMonitorFactory implements Provider<DagActionSto
     Config dagActionStoreChangeConfig = configWithFallBack.getConfig(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX);
 
     log.info("Extracted the sub config {}", dagActionStoreChangeConfig);
-
-    dagActionStoreChangeConfig = dagActionStoreChangeConfig.getConfig(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX);
     String topic = ""; // Pass empty string because we expect underlying client to dynamically determine the Kafka topic
     int numThreads = ConfigUtils.getInt(dagActionStoreChangeConfig, DAG_ACTION_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 5);
 
