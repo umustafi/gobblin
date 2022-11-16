@@ -265,6 +265,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
    */
   private void commitOffsets() {
     if(shouldCommitOffsets()) {
+      log.info("should commit offsets");
       copyAndCommit();
     }
   }
@@ -278,6 +279,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
     Map<KafkaPartition, Long> copy = new HashMap<>(partitionOffsetsToCommit);
     recordsProcessed.set(0);
     lastCommitTime = System.currentTimeMillis();
+    log.info("commit offsets called {}", partitionOffsetsToCommit);
     commitOffsets(copy);
   }
 
@@ -325,6 +327,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
             KafkaPartition partition = new KafkaPartition.Builder().withId(record.getPartition()).withTopicName(HighLevelConsumer.this.topic).build();
             // Committed offset should always be the offset of the next record to be read (hence +1)
             partitionOffsetsToCommit.put(partition, record.getOffset() + 1);
+            log.info("incremented partition offset for {} to {}", partition, record.getOffset() + 1);
           }
         }
       } catch (InterruptedException e) {

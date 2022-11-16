@@ -51,6 +51,8 @@ public class DagActionStoreChangeMonitorFactory implements Provider<DagActionSto
     Config fallback = ConfigBuilder.create()
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + DAG_ACTION_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 2)
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".ligobblin.shaded." + ConfigurationKeys.KAFKA_BROKERS, "fakeBroker2")
+        .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".kafka.consumer.groupId", "shared-gobblin-service")
+        .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".kafka.consumer.clientId", "shared-gobblin-service")
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + ".kafka.schema.registry.url", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.brooklinUri", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
         .addPrimitive(DagActionStoreChangeMonitor.DAG_ACTION_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.name", "gobblin-dag-action-updates")

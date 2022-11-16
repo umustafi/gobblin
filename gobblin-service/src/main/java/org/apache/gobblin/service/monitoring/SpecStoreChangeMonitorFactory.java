@@ -53,6 +53,8 @@ public class SpecStoreChangeMonitorFactory implements Provider<SpecStoreChangeMo
         .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + SPEC_STORE_CHANGE_MONITOR_NUM_THREADS_KEY, 2)
         .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".ligobblin.shaded." + ConfigurationKeys.KAFKA_BROKERS, "fakeBroker")
         .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".kafka.schema.registry.url", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".kafka.consumer.groupId", "shared-gobblin-service")
+        .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + ".kafka.consumer.clientId", "shared-gobblin-service")
         .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.brooklinUri", "http://brooklin.mysql.tag.ei-ltx1.atd.disco.linkedin.com:2428/brooklin-service/")
         .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.name", "gobblin-flow-spec-updates")
         .addPrimitive(SpecStoreChangeMonitor.SPEC_STORE_CHANGE_MONITOR_PREFIX + "." + "singleKafkaDatastreamConsumerClient.completenessEnabled", "true")
