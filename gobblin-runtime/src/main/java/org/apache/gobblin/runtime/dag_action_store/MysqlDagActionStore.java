@@ -17,8 +17,6 @@
 
 package org.apache.gobblin.runtime.dag_action_store;
 
-import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -26,14 +24,21 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
 import java.util.HashSet;
+
+import com.google.inject.Inject;
+import com.typesafe.config.Config;
+
 import javax.sql.DataSource;
+import lombok.extern.slf4j.Slf4j;
+
+import org.apache.gobblin.config.ConfigBuilder;
 import org.apache.gobblin.configuration.ConfigurationKeys;
 import org.apache.gobblin.metastore.MysqlStateStore;
 import org.apache.gobblin.runtime.api.DagActionStore;
 import org.apache.gobblin.service.ServiceConfigKeys;
 import org.apache.gobblin.util.ConfigUtils;
 
-
+@Slf4j
 public class MysqlDagActionStore implements DagActionStore {
 
   public static final String CONFIG_PREFIX = "MysqlDagActionStore";
@@ -56,6 +61,14 @@ public class MysqlDagActionStore implements DagActionStore {
 
   @Inject
   public MysqlDagActionStore(Config config) throws IOException {
+    //todo: remove this after e2e test
+    Config fallback = ConfigBuilder.create()
+        .addPrimitive("MysqlDagActionStore.state.store.db.table", "dag_action_store")
+        .addPrimitive("MysqlDagActionStore.state.store.db.url", "jdbc:mysql://makto-db-034.stg.linkedin.com:3306/shared_gobblin")
+        .addPrimitive("MysqlDagActionStore.state.store.db.password", "ENC(5tnbS/1MTvt8hbSPAL7NUQ==)")
+        .addPrimitive("MysqlDagActionStore.state.store.db.user", "gb_stg_admin")
+        .build();
+    config = config.withFallback(fallback);
     if (config.hasPath(CONFIG_PREFIX)) {
       config = config.getConfig(CONFIG_PREFIX).withFallback(config);
     } else {
@@ -101,14 +114,20 @@ public class MysqlDagActionStore implements DagActionStore {
       throws IOException {
     try (Connection connection = this.dataSource.getConnection();
         PreparedStatement insertStatement = connection.prepareStatement(String.format(INSERT_STATEMENT, tableName))) {
+      log.info("addDagAction: made connection in add dag action");
       int i = 0;
       insertStatement.setString(++i, flowGroup);
       insertStatement.setString(++i, flowName);
       insertStatement.setString(++i, flowExecutionId);
       insertStatement.setString(++i, dagActionValue.toString());
+      log.info("addDagAction: insert statement is {}", insertStatement);
       insertStatement.executeUpdate();
+      log.info("addDagAction: executed update");
       connection.commit();
+      log.info("addDagAction: committed after dag action insert");
     } catch (SQLException e) {
+      // TODO: add check to handle duplicate entry exception like -
+      // Caused by: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'testFollower1-testFollower1-1670536556652' for key 'dag_action_store.PRIMARY'
       throw new IOException(String.format("Failure to adding action for table %s of flow with flow group:%s, flow name:%s and flow execution id:%s",
           tableName, flowGroup, flowName, flowExecutionId), e);
     }
@@ -118,12 +137,16 @@ public class MysqlDagActionStore implements DagActionStore {
   public boolean deleteDagAction(String flowGroup, String flowName, String flowExecutionId) throws IOException {
     try (Connection connection = this.dataSource.getConnection();
         PreparedStatement deleteStatement = connection.prepareStatement(String.format(DELETE_STATEMENT, tableName))) {
+      log.info("deleteDagAction: made connection");
       int i = 0;
       deleteStatement.setString(++i, flowGroup);
       deleteStatement.setString(++i, flowName);
       deleteStatement.setString(++i, flowExecutionId);
+      log.info("deleteDagAction: delete statement {}", deleteStatement);
       int result = deleteStatement.executeUpdate();
+      log.info("deleteDagAction: executed delete");
       connection.commit();
+      log.info("deleteDagAction: committed after dag action delete ");
       return result != 0;
     } catch (SQLException e) {
       throw new IOException(String.format("Failure to delete action for table %s of flow with flow group:%s, flow name:%s and flow execution id:%s",
@@ -137,13 +160,18 @@ public class MysqlDagActionStore implements DagActionStore {
     ResultSet rs = null;
     try (Connection connection = this.dataSource.getConnection();
         PreparedStatement getStatement = connection.prepareStatement(String.format(GET_STATEMENT, tableName))) {
+      log.info("getDagAction: made connection");
       int i = 0;
       getStatement.setString(++i, flowGroup);
       getStatement.setString(++i, flowName);
       getStatement.setString(++i, flowExecutionId);
+      log.info("getDagAction: get statement {}", getStatement);
       rs = getStatement.executeQuery();
+      log.info("getDagAction: executed get with result {}", rs);
       if (rs.next()) {
-        return new DagAction(rs.getString(1), rs.getString(2), rs.getString(3), DagActionValue.valueOf(rs.getString(4)));
+        DagAction action = new DagAction(rs.getString(1), rs.getString(2), rs.getString(3), DagActionValue.valueOf(rs.getString(4)));
+        log.info("getDagAction: action is {}", action);
+        return action;
       }
       return null;
     } catch (SQLException e) {
@@ -165,6 +193,9 @@ public class MysqlDagActionStore implements DagActionStore {
       while (rs.next()) {
         result.add(
             new DagAction(rs.getString(1), rs.getString(2), rs.getString(3), DagActionValue.valueOf(rs.getString(4))));
+      }
+      if (rs != null) {
+        rs.close();
       }
       return result;
     } catch (SQLException e) {

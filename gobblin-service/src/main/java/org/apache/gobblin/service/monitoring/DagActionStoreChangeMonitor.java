@@ -65,19 +65,21 @@ public class DagActionStoreChangeMonitor extends HighLevelConsumer {
   protected LoadingCache<String, String>
       dagActionsSeenCache = CacheBuilder.newBuilder().expireAfterWrite(10, TimeUnit.MINUTES).build(cacheLoader);
 
-  @Inject
   protected DagActionStore dagActionStore;
 
-  @Inject
   protected DagManager dagManager;
 
   // Note that the topic is an empty string (rather than null to avoid NPE) because this monitor relies on the consumer
   // client itself to determine all Kafka related information dynamically rather than through the config.
-  public DagActionStoreChangeMonitor(String topic, Config config, int numThreads) {
+  public DagActionStoreChangeMonitor(String topic, Config config, DagActionStore dagActionStore, DagManager dagManager,
+      int numThreads) {
     // Differentiate group id for each host
     super(topic, config.withValue(GROUP_ID_KEY,
         ConfigValueFactory.fromAnyRef(DAG_ACTION_CHANGE_MONITOR_PREFIX + UUID.randomUUID().toString())),
         numThreads);
+    this.dagActionStore = dagActionStore;
+    this.dagManager = dagManager;
+    log.info("dagactionstorechangemonitor actually has dagactionstore {} and dagmanager {}", this.dagActionStore, this.dagManager);
   }
 
   @Override
@@ -104,7 +106,7 @@ public class DagActionStoreChangeMonitor extends HighLevelConsumer {
     String flowName = value.getFlowName();
     String flowExecutionId = value.getFlowExecutionId();
 
-    log.debug("Processing Dag Action message for flow group: {} name: {} executionId: {} timestamp {} operation {}",
+    log.info("Processing Dag Action message for flow group: {} name: {} executionId: {} timestamp {} operation {}",
         flowGroup, flowName, flowExecutionId, timestamp, operation);
 
     String changeIdentifier = timestamp + key;
@@ -118,6 +120,7 @@ public class DagActionStoreChangeMonitor extends HighLevelConsumer {
     if (!operation.equals("DELETE")) {
       try {
         dagAction = dagActionStore.getDagAction(flowGroup, flowName, flowExecutionId).getDagActionValue();
+        log.info("retrieved from dagActionStore: dag action value is {}", dagAction);
       } catch (IOException e) {
         log.warn("Encountered IOException trying to retrieve dagAction for flow group: {} name: {} executionId: {}. " + "Exception: {}", flowGroup, flowName, flowExecutionId, e);
         this.unexpectedErrors.mark();
@@ -136,9 +139,11 @@ public class DagActionStoreChangeMonitor extends HighLevelConsumer {
     try {
       if (operation.equals("INSERT")) {
         if (dagAction.equals(DagActionStore.DagActionValue.RESUME)) {
+          log.info("got insert dag action and about to send resume flow request");
           dagManager.handleResumeFlowRequest(flowGroup, flowName,Long.parseLong(flowExecutionId));
           this.resumesInvoked.mark();
         } else if (dagAction.equals(DagActionStore.DagActionValue.KILL)) {
+          log.info("got insert dag action and about to send kill flow request");
           dagManager.handleKillFlowRequest(flowGroup, flowName, Long.parseLong(flowExecutionId));
           this.killsInvoked.mark();
         } else {
@@ -152,7 +157,7 @@ public class DagActionStoreChangeMonitor extends HighLevelConsumer {
             flowExecutionId, dagAction);
         this.unexpectedErrors.mark();
       } else if (operation.equals("DELETE")) {
-        log.debug("Deleted flow group: {} name: {} executionId {} from DagActionStore", flowGroup, flowName, flowExecutionId);
+        log.info("Deleted flow group: {} name: {} executionId {} from DagActionStore", flowGroup, flowName, flowExecutionId);
       } else {
         log.warn("Received unsupported change type of operation {}. Expected values to be in [INSERT, UPDATE, DELETE]",
             operation);

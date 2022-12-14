@@ -297,6 +297,7 @@ public class GobblinServiceManager implements ApplicationLauncher, StandardMetri
    * @param changeContext notification context
    */
   private void handleLeadershipChange(NotificationContext changeContext) {
+    // TODO: if helix manager is present turn on everything (don't need to check if leader)
     if (this.helixManager.isPresent() && this.helixManager.get().isLeader()) {
       LOGGER.info("Leader notification for {} HM.isLeader {}", this.helixManager.get().getInstanceName(),
           this.helixManager.get().isLeader());

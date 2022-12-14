@@ -140,6 +140,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
   protected GobblinKafkaConsumerClient createConsumerClient(Config config) {
     String kafkaConsumerClientClass = config.getString(CONSUMER_CLIENT_FACTORY_CLASS_KEY);
 
+    log.info("creating consumer client of class {} and contains config {}", kafkaConsumerClientClass, config);
     try {
       Class clientFactoryClass = Class.forName(kafkaConsumerClientClass);
       final GobblinKafkaConsumerClient.GobblinKafkaConsumerClientFactory factory =
@@ -233,7 +234,8 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
    * Note: All records from a KafkaPartition are added to the same queue.
    * A queue can contain records from multiple partitions if partitions > numThreads(queues)
    */
-  private void consume() {
+  private void
+  consume() {
     try {
       Iterator<KafkaConsumerRecord> itr = gobblinKafkaConsumerClient.consume();
       if(!enableAutoCommit) {
@@ -242,9 +244,11 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
       while (itr.hasNext()) {
         KafkaConsumerRecord record = itr.next();
         int idx = record.getPartition() % numThreads;
+        log.info("queues size {} idx {} record partition {} numthreads {}", queues.length, idx, record.getPartition(), numThreads);
         queues[idx].put(record);
       }
-    } catch (InterruptedException e) {
+    } catch (Exception e) {
+      log.warn("exception thrown from highlevel consumer consume method {}", e);
       Thread.currentThread().interrupt();
     }
   }
@@ -264,6 +268,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
    */
   private void commitOffsets() {
     if(shouldCommitOffsets()) {
+      log.info("should commit offsets");
       copyAndCommit();
     }
   }
@@ -277,6 +282,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
     Map<KafkaPartition, Long> copy = new HashMap<>(partitionOffsetsToCommit);
     recordsProcessed.set(0);
     lastCommitTime = System.currentTimeMillis();
+    log.info("commit offsets called {}", partitionOffsetsToCommit);
     commitOffsets(copy);
   }
 
@@ -324,6 +330,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
             KafkaPartition partition = new KafkaPartition.Builder().withId(record.getPartition()).withTopicName(HighLevelConsumer.this.topic).build();
             // Committed offset should always be the offset of the next record to be read (hence +1)
             partitionOffsetsToCommit.put(partition, record.getOffset() + 1);
+            log.info("incremented partition offset for {} to {}", partition, record.getOffset() + 1);
           }
         }
       } catch (InterruptedException e) {

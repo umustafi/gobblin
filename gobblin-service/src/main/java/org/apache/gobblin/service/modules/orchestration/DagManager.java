@@ -334,26 +334,26 @@ public class DagManager extends AbstractIdleService {
 
   // Method used to handle kill flow requests received from subscriber-event model or from direct invocation
   public void handleKillFlowRequest(String flowGroup, String flowName, long flowExecutionId) {
-    if (isActive) {
+//    if (isActive) {
       log.info("Received kill request for flow ({}, {}, {})", flowGroup, flowName, flowExecutionId);
       try {
         killFlow(flowGroup, flowName, flowExecutionId);
       } catch (IOException e) {
         log.warn("Failed to kill flow", e);
       }
-    }
+//    }
   }
 
   // Method used to handle resume flow requests received from subscriber-event model or from direct invocation
   public void handleResumeFlowRequest(String flowGroup, String flowName, long flowExecutionId) {
-    if (isActive) {
+//    if (isActive) {
       log.info("Received resume request for flow ({}, {}, {})", flowGroup, flowName, flowExecutionId);
       DagId dagId = DagManagerUtils.generateDagId(flowGroup, flowName, flowExecutionId);
       int queueId = DagManagerUtils.getDagQueueId(flowExecutionId, this.numThreads);
       if (!this.resumeQueue[queueId].offer(dagId)) {
         log.warn("Could not add dag " + dagId + " to resume queue");
       }
-    }
+//    }
   }
 
   @Subscribe
