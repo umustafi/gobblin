@@ -234,7 +234,7 @@ public abstract class HighLevelConsumer<K,V> extends AbstractIdleService {
    * Note: All records from a KafkaPartition are added to the same queue.
    * A queue can contain records from multiple partitions if partitions > numThreads(queues)
    */
-  private void consume() {
+  protected void consume() {
     try {
       Iterator<KafkaConsumerRecord> itr = gobblinKafkaConsumerClient.consume();
       if(!enableAutoCommit) {

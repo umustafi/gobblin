@@ -171,6 +171,20 @@ public class SpecStoreChangeMonitor extends HighLevelConsumer {
     specChangesSeenCache.put(changeIdentifier, changeIdentifier);
   }
 
+  @Override
+  protected void consume() {
+    // Wait until scheduler initializes flow specs to start consuming
+    while (!this.scheduler.getAreSpecsScheduledFromCatalog()) {
+      try {
+        Thread.sleep(10);
+      } catch (InterruptedException e) {
+        log.warn("Interrupted while waiting for scheduler to be initialized to start consuming from SpecStoreChangeMonitor {}", e);
+      }
+    }
+    super.consume();
+  }
+
+
  @Override
   protected void createMetrics() {
     super.createMetrics();

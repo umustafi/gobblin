@@ -18,9 +18,13 @@
 package org.apache.gobblin.service.modules.scheduler;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -60,6 +64,7 @@ import org.apache.gobblin.runtime.JobException;
 import org.apache.gobblin.runtime.api.FlowSpec;
 import org.apache.gobblin.runtime.api.Spec;
 import org.apache.gobblin.runtime.api.SpecCatalogListener;
+import org.apache.gobblin.runtime.api.SpecNotFoundException;
 import org.apache.gobblin.runtime.listeners.JobListener;
 import org.apache.gobblin.runtime.metrics.RuntimeMetrics;
 import org.apache.gobblin.runtime.spec_catalog.AddSpecResponse;
@@ -94,6 +99,9 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
   // Scheduler related configuration
   // A boolean function indicating if current instance will handle DR traffic or not.
   public static final String GOBBLIN_SERVICE_SCHEDULER_DR_NOMINATED = GOBBLIN_SERVICE_PREFIX + "drNominatedInstance";
+
+  @Getter
+  public volatile Boolean areSpecsScheduledFromCatalog;
 
   protected final Logger _log;
 
@@ -141,6 +149,7 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
       @Named(InjectionNames.WARM_STANDBY_ENABLED) boolean warmStandbyEnabled) throws Exception {
     super(ConfigUtils.configToProperties(config), schedulerService);
 
+    this.areSpecsScheduledFromCatalog = false;
     _log = log.isPresent() ? log.get() : LoggerFactory.getLogger(getClass());
     this.serviceName = serviceName;
     this.flowCatalog = flowCatalog;
@@ -156,11 +165,8 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
     // of the scheduler. If one metric exists, then the others should as well.
     MetricFilter filter = MetricFilter.contains(RuntimeMetrics.GOBBLIN_JOB_SCHEDULER_AVERAGE_GET_SPEC_SPEED_WHILE_LOADING_ALL_SPECS_MILLIS);
     if (metricContext.getGauges(filter).isEmpty()) {
-//      this.averageGetSpecTimeMillis =
       metricContext.register(this.averageGetSpecTimeMillis);
-//      this.batchSize ;
       metricContext.register(this.batchSize);
-//      this.timeToInitalizeSchedulerMillis
       metricContext.register(timeToInitalizeSchedulerMillis);
     }
   }
@@ -198,6 +204,7 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
             scheduleSpecsFromCatalog();
           }
         });
+        this.areSpecsScheduledFromCatalog = true;
         scheduleSpec.start();
       }
     } else {
@@ -223,6 +230,19 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
    */
   private void scheduleSpecsFromCatalog() {
     int numSpecs = this.flowCatalog.get().getSize();
+
+    // Create set of uris to schedule
+    Iterator<URI> uriIterator = null;
+    try {
+      uriIterator = this.flowCatalog.get().getSpecURIs();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to get Spec URIs to create set of uris to schedule", e);
+    }
+    HashSet<URI> uriHashSet = new HashSet<>();
+    while (uriIterator.hasNext()) {
+      uriHashSet.add(uriIterator.next());
+    }
+
     long startTime = System.currentTimeMillis();
 
     try {
@@ -259,6 +279,8 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
           } else {
             onAddSpec(spec);
           }
+          // After processing spec remove it from list of spec uri's to process
+          uriHashSet.remove(spec.getUri());
         } catch (Exception e) {
           // If there is an uncaught error thrown during compilation, log it and continue adding flows
           _log.error("Could not schedule spec {} from flowCatalog due to ", spec, e);
@@ -268,6 +290,26 @@ public class GobblinServiceJobScheduler extends JobScheduler implements SpecCata
       // This count is used to ensure the average spec get time is calculated accurately for the last batch which may be
       // smaller than the loadSpecsBatchSize
       averageGetSpecTimeValue = (batchGetEndTime - batchGetStartTime) / batchOfSpecs.size();
+    }
+
+    // TODO: ensure this is needed
+    // Ensure no specs were missed if order was changed
+    ArrayList<URI> missedUris = new ArrayList<>(uriHashSet);
+    for (URI uri: missedUris) {
+      Spec spec = null;
+      try {
+        spec = this.flowCatalog.get().getSpecs(uri);
+      } catch (SpecNotFoundException e) {
+        throw new RuntimeException("Could not extract spec from catalog for uri " + uri, e);
+      }
+      if (spec instanceof FlowSpec && PropertiesUtils
+          .getPropAsBoolean(((FlowSpec) spec).getConfigAsProperties(), ConfigurationKeys.FLOW_RUN_IMMEDIATELY,
+              "false")) {
+        Spec modifiedSpec = disableFlowRunImmediatelyOnStart((FlowSpec) spec);
+        onAddSpec(modifiedSpec);
+      } else {
+        onAddSpec(spec);
+      }
     }
 
     this.flowCatalog.get().getMetrics().updateGetSpecTime(startTime);

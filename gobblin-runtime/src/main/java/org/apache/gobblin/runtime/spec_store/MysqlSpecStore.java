@@ -109,6 +109,8 @@ public class MysqlSpecStore extends MysqlBaseSpecStore {
       return rs.getString(3) == null
           ? MysqlSpecStore.this.specSerDe.deserialize(ByteStreams.toByteArray(rs.getBlob(2).getBinaryStream()))
           : MysqlSpecStore.this.specSerDe.deserialize(rs.getString(3).getBytes(Charsets.UTF_8));
+      // get modification time
+//      then update spec manually and return
     }
 
     @Override
