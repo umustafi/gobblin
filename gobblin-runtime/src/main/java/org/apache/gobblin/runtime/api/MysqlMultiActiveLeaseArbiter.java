@@ -122,7 +122,8 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
   // Need to define three separate statements to handle cases where row does not exist or has null values to check
   protected static final String CONDITIONALLY_ACQUIRE_LEASE_IF_NEW_ROW_STATEMENT = "INSERT INTO %s (flow_group, "
       + "flow_name, flow_execution_id, flow_action, event_timestamp, lease_acquisition_timestamp) "
-      + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+      + "SELECT ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT * FROM %s "
+      + WHERE_CLAUSE_TO_MATCH_KEY + ")";
   protected static final String CONDITIONALLY_ACQUIRE_LEASE_IF_FINISHED_LEASING_STATEMENT = "UPDATE %s "
       + "SET event_timestamp=CURRENT_TIMESTAMP, lease_acquisition_timestamp=CURRENT_TIMESTAMP "
       + WHERE_CLAUSE_TO_MATCH_KEY + " AND event_timestamp=? AND lease_acquisition_timestamp is NULL";
@@ -142,6 +143,8 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
           + "before all properties", ConfigurationKeys.MYSQL_LEASE_ARBITER_PREFIX));
     }
 
+    log.info("MysqlMultiActiveLeaseArbiter constructor called with config " + config);
+
     this.leaseArbiterTableName = ConfigUtils.getString(config, ConfigurationKeys.SCHEDULER_LEASE_DETERMINATION_STORE_DB_TABLE_KEY,
         ConfigurationKeys.DEFAULT_SCHEDULER_LEASE_DETERMINATION_STORE_DB_TABLE);
     this.constantsTableName = ConfigUtils.getString(config, ConfigurationKeys.MULTI_ACTIVE_SCHEDULER_CONSTANTS_DB_TABLE_KEY,
@@ -157,6 +160,7 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
     this.dataSource = MysqlDataSourceFactory.get(config, SharedResourcesBrokerFactory.getImplicitBroker());
     String createArbiterStatement = String.format(
         CREATE_LEASE_ARBITER_TABLE_STATEMENT, leaseArbiterTableName);
+    log.info("arbiter table creation statement " + createArbiterStatement);
     try (Connection connection = dataSource.getConnection();
         PreparedStatement createStatement = connection.prepareStatement(createArbiterStatement)) {
       createStatement.executeUpdate();
@@ -186,6 +190,20 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
   @Override
   public LeaseAttemptStatus tryAcquireLease(DagActionStore.DagAction flowAction, long eventTimeMillis)
       throws IOException {
+    // TODO: remove later only for debugging purposes
+    String tableStatus = withPreparedStatement(String.format("SELECT * FROM %s", this.leaseArbiterTableName), selectStatement -> {
+      ResultSet resultSet = selectStatement.executeQuery();
+      String table = "";
+      String row;
+      while (resultSet.next()) {
+        row = resultSet.getString(1) + ", " + resultSet.getString(2) + ", "
+            + resultSet.getString(3) + ", " + resultSet.getString(4) + ", "
+            + resultSet.getTime(5) + ", " + resultSet.getTimestamp(6) + "\n";
+        table = table + row;
+      }
+      return table;
+    }, true);
+
     // Check table for an existing entry for this flow action and event time
     Optional<GetEventInfoResult> getResult = withPreparedStatement(thisTableGetInfoStatement,
         getInfoStatement -> {
@@ -212,7 +230,8 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
         log.debug("tryAcquireLease for [{}, eventTimestamp: {}] - CASE 1: no existing row for this flow action, then go"
                 + " ahead and insert", flowAction, eventTimeMillis);
         String formattedAcquireLeaseNewRowStatement =
-            String.format(CONDITIONALLY_ACQUIRE_LEASE_IF_NEW_ROW_STATEMENT, this.leaseArbiterTableName);
+            String.format(CONDITIONALLY_ACQUIRE_LEASE_IF_NEW_ROW_STATEMENT, this.leaseArbiterTableName,
+                this.leaseArbiterTableName);
         int numRowsUpdated = withPreparedStatement(formattedAcquireLeaseNewRowStatement,
             insertStatement -> {
               completeInsertPreparedStatement(insertStatement, flowAction);
@@ -313,7 +332,7 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
     }
   }
 
-  protected SelectInfoResult createSelectInfoResult(ResultSet resultSet) throws IOException {
+  protected static SelectInfoResult createSelectInfoResult(ResultSet resultSet) throws IOException {
       try {
         if (!resultSet.next()) {
           throw new IOException("Expected num rows and lease_acquisition_timestamp returned from query but received nothing, so "
@@ -365,6 +384,7 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
       return new LeaseObtainedStatus(flowAction, selectInfoResult.eventTimeMillis,
           selectInfoResult.getLeaseAcquisitionTimeMillis());
     }
+    log.info("another participant acquired lease in between num rows updated: ", numRowsUpdated);
     // Another participant acquired lease in between
     return new LeasedToAnotherStatus(flowAction, selectInfoResult.getEventTimeMillis(),
         selectInfoResult.getLeaseAcquisitionTimeMillis() + selectInfoResult.getDbLinger()
@@ -377,10 +397,15 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
    * @param flowAction
    * @throws SQLException
    */
-  protected void completeInsertPreparedStatement(PreparedStatement statement, DagActionStore.DagAction flowAction)
-      throws SQLException {
+  protected static void completeInsertPreparedStatement(PreparedStatement statement,
+      DagActionStore.DagAction flowAction) throws SQLException {
     int i = 0;
     // Values to set in new row
+    statement.setString(++i, flowAction.getFlowGroup());
+    statement.setString(++i, flowAction.getFlowName());
+    statement.setString(++i, flowAction.getFlowExecutionId());
+    statement.setString(++i, flowAction.getFlowActionType().toString());
+    // Values to check if a row with this primary key exists
     statement.setString(++i, flowAction.getFlowGroup());
     statement.setString(++i, flowAction.getFlowName());
     statement.setString(++i, flowAction.getFlowExecutionId());
@@ -393,8 +418,8 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
    * @param flowAction
    * @throws SQLException
    */
-  protected void completeWhereClauseMatchingKeyPreparedStatement(PreparedStatement statement, DagActionStore.DagAction flowAction)
-    throws SQLException {
+  protected static void completeWhereClauseMatchingKeyPreparedStatement(PreparedStatement statement,
+      DagActionStore.DagAction flowAction) throws SQLException {
     int i = 0;
     statement.setString(++i, flowAction.getFlowGroup());
     statement.setString(++i, flowAction.getFlowName());
@@ -413,8 +438,8 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
    * @param originalLeaseAcquisitionTimestamp value to compare to db one, null if not needed
    * @throws SQLException
    */
-  protected void completeUpdatePreparedStatement(PreparedStatement statement, DagActionStore.DagAction flowAction,
-      boolean needEventTimeCheck, boolean needLeaseAcquisitionTimeCheck,
+  protected static void completeUpdatePreparedStatement(PreparedStatement statement,
+      DagActionStore.DagAction flowAction, boolean needEventTimeCheck, boolean needLeaseAcquisitionTimeCheck,
       Timestamp originalEventTimestamp, Timestamp originalLeaseAcquisitionTimestamp) throws SQLException {
     int i = 0;
     // Values to check if existing row matches previous read
@@ -439,7 +464,20 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
     String flowName = flowAction.getFlowName();
     String flowExecutionId = flowAction.getFlowExecutionId();
     DagActionStore.FlowActionType flowActionType = flowAction.getFlowActionType();
-    return withPreparedStatement(String.format(CONDITIONALLY_COMPLETE_LEASE_STATEMENT, leaseArbiterTableName),
+    // TODO: remove later only for debugging purposes
+    String tableStatus = withPreparedStatement(String.format("SELECT * FROM %s", this.leaseArbiterTableName), selectStatement -> {
+      ResultSet resultSet = selectStatement.executeQuery();
+      String table = "";
+      String row;
+      while (resultSet.next()) {
+        row = resultSet.getString(1) + ", " + resultSet.getString(2) + ", "
+            + resultSet.getString(3) + ", " + resultSet.getString(4) + ", "
+            + resultSet.getTime(5) + ", " + resultSet.getTimestamp(6) + "\n";
+        table = table + row;
+      }
+      return table;
+    }, true);
+    boolean result = withPreparedStatement(String.format(CONDITIONALLY_COMPLETE_LEASE_STATEMENT, leaseArbiterTableName),
         updateStatement -> {
           int i = 0;
           updateStatement.setString(++i, flowGroup);
@@ -463,6 +501,20 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
           throw new IOException(String.format("Attempt to complete lease use: [%s, eventTimestamp: %s] - updated more "
                   + "rows than expected", flowAction, status.getEventTimestamp()));
         }, true);
+    // TODO: remove later only for debugging purposes
+    String tableStatusAfter = withPreparedStatement(String.format("SELECT * FROM %s", this.leaseArbiterTableName), selectStatement -> {
+      ResultSet resultSet = selectStatement.executeQuery();
+      String table = "";
+      String row;
+      while (resultSet.next()) {
+        row = resultSet.getString(1) + ", " + resultSet.getString(2) + ", "
+            + resultSet.getString(3) + ", " + resultSet.getString(4) + ", "
+            + resultSet.getTime(5) + ", " + resultSet.getTimestamp(6) + "\n";
+        table = table + row;
+      }
+      return table;
+    }, true);
+    return result;
   }
 
   /** Abstracts recurring pattern around resource management and exception re-mapping. */
