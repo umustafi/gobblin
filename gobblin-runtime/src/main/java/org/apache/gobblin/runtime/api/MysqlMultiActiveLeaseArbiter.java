@@ -266,7 +266,7 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
   @Override
   public LeaseAttemptStatus tryAcquireLease(DagActionStore.DagAction flowAction, long eventTimeMillis,
       boolean isReminderEvent) throws IOException {
-    log.info("Multi-active scheduler about to handle trigger event: [{}, is: {}, triggerEventTimestamp: {}]",
+    log.info("Multi-active arbiter about to handle trigger event: [{}, is: {}, triggerEventTimestamp: {}]",
         flowAction, isReminderEvent ? "reminder" : "original", eventTimeMillis);
     // Query lease arbiter table about this flow action
     Optional<GetEventInfoResult> getResult = getExistingEventInfo(flowAction, isReminderEvent);
@@ -312,17 +312,18 @@ public class MysqlMultiActiveLeaseArbiter implements MultiActiveLeaseArbiter {
 
       // Lease is valid
       if (leaseValidityStatus == 1) {
+        // Utilize db lease acquisition timestamp for wait time for both cases
         if (isWithinEpsilon) {
           log.info("tryAcquireLease for [{}, is: {}, eventTimestamp: {}] - CASE 2: Same event, lease is valid",
-              flowAction, isReminderEvent ? "reminder" : "original", dbCurrentTimestamp.getTime());
-          // Utilize db timestamp for reminder
+              flowAction, isReminderEvent ? "reminder" : "original", eventTimeMillis);
+          // Utilize db timestamp for reminder since same event
           return new LeasedToAnotherStatus(flowAction, dbEventTimestamp.getTime(),
               dbLeaseAcquisitionTimestamp.getTime() + dbLinger - dbCurrentTimestamp.getTime());
         }
         log.info("tryAcquireLease for [{}, is: {}, eventTimestamp: {}] - CASE 3: Distinct event, lease is valid",
-            flowAction, isReminderEvent ? "reminder" : "original", dbCurrentTimestamp.getTime());
-        // Utilize db lease acquisition timestamp for wait time
-        return new LeasedToAnotherStatus(flowAction, dbCurrentTimestamp.getTime(),
+            flowAction, isReminderEvent ? "reminder" : "original", eventTimeMillis);
+        // Utilize original eventTimeMillis for reminder if distinct event so that we don't lose track of it 
+        return new LeasedToAnotherStatus(flowAction, eventTimeMillis,
             dbLeaseAcquisitionTimestamp.getTime() + dbLinger  - dbCurrentTimestamp.getTime());
       } // Lease is invalid
       else if (leaseValidityStatus == 2) {
