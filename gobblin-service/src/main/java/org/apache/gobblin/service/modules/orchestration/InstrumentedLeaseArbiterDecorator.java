@@ -40,7 +40,7 @@ import org.apache.gobblin.util.ConfigUtils;
   can be used to compare relative performance among arbitration participants.
  */
 @Slf4j
-public abstract class InstrumentedLeaseArbiterDecorator extends MysqlMultiActiveLeaseArbiter {
+public class InstrumentedLeaseArbiterDecorator implements MultiActiveLeaseArbiter {
   protected MultiActiveLeaseArbiter multiActiveLeaseArbiter;
   protected MetricContext metricContext;
   private ContextAwareCounter leaseObtainedCount;
@@ -51,8 +51,7 @@ public abstract class InstrumentedLeaseArbiterDecorator extends MysqlMultiActive
   private ContextAwareMeter leasesObtainedDueToReminderCount;
 
   public InstrumentedLeaseArbiterDecorator(Config config, MultiActiveLeaseArbiter leaseDeterminationStore,
-      String metricsPrefix) throws IOException {
-    super(config);
+      String metricsPrefix) {
     this.multiActiveLeaseArbiter = leaseDeterminationStore;
     this.metricContext = Instrumented.getMetricContext(new org.apache.gobblin.configuration.State(ConfigUtils.configToProperties(config)),
         this.getClass());
@@ -61,7 +60,7 @@ public abstract class InstrumentedLeaseArbiterDecorator extends MysqlMultiActive
 
   private void initializeMetrics(String metricsPrefix) {
     // If a valid metrics prefix is provided then add a delimiter after it
-    if (metricsPrefix != "") {
+    if (!metricsPrefix.equals("")) {
       metricsPrefix += ".";
     }
     this.leaseObtainedCount = this.metricContext.contextAwareCounter(metricsPrefix + ServiceMetricNames.FLOW_TRIGGER_HANDLER_LEASE_OBTAINED_COUNT);
@@ -97,7 +96,6 @@ public abstract class InstrumentedLeaseArbiterDecorator extends MysqlMultiActive
       return leaseAttemptStatus;
     } else if (leaseAttemptStatus instanceof MultiActiveLeaseArbiter.LeasedToAnotherStatus) {
       this.leasedToAnotherStatusCount.inc();
-//        scheduleReminderForEvent((MultiActiveLeaseArbiter.LeasedToAnotherStatus) leaseAttemptStatus, eventTimeMillis);
       return leaseAttemptStatus;
     } else if (leaseAttemptStatus instanceof MultiActiveLeaseArbiter.NoLongerLeasingStatus) {
       this.noLongerLeasingStatusCount.inc();

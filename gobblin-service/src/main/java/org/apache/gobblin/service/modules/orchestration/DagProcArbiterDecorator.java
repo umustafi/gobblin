@@ -1,5 +1,21 @@
-package org.apache.gobblin.service.modules.orchestration;
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+package org.apache.gobblin.service.modules.orchestration;
 
 import java.io.IOException;
 import java.util.Date;
@@ -14,7 +30,6 @@ import org.quartz.SchedulerException;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 
-import com.google.common.base.Optional;
 import com.typesafe.config.Config;
 
 import javax.inject.Inject;
@@ -31,18 +46,26 @@ import org.apache.gobblin.runtime.api.MysqlMultiActiveLeaseArbiter;
  * uses the {@link MultiActiveLeaseArbiter} to determine a single lease owner at a given event time for a flow action
  * event. After acquiring the lease, the host can pursue executing the action. Once it has completed this action, it
  * marks the lease as completed by calling the
- * {@link MysqlMultiActiveLeaseArbiter#recordLeaseSuccess(MultiActiveLeaseArbiter.LeaseObtainedStatus)} method. Hosts
- * that fail to acquire a lease will use the {@link DagProcReminderScheduler} to set a reminder for the flow action
+ * {@link MultiActiveLeaseArbiter#recordLeaseSuccess(MultiActiveLeaseArbiter.LeaseObtainedStatus)} method. Hosts
+ * that fail to acquire a lease will use the {@link DagActionReminderScheduler} to set a reminder for the flow action
  * event to check back in on the previous lease owner's completion status.
  */
-public class DagProcArbiterDecorator extends InstrumentedLeaseArbiterDecorator {
-  private final DagProcReminderScheduler dagProcReminderScheduler;
+@Slf4j
+public class DagProcArbiterDecorator implements MultiActiveLeaseArbiter {
+  private final InstrumentedLeaseArbiterDecorator instrumentedMySqlBasedLeaseArbiterDecorator;
+  private final DagActionReminderScheduler _dagActionReminderScheduler;
+  private final Config config;
 
+  public DagProcArbiterDecorator(InstrumentedLeaseArbiterDecorator instrumentedLeaseArbiterDecorator,
+      Config config, DagActionReminderScheduler dagActionReminderScheduler) {
+    this.instrumentedMySqlBasedLeaseArbiterDecorator = instrumentedLeaseArbiterDecorator;
+    this._dagActionReminderScheduler = dagActionReminderScheduler;
+    this.config = config;
+  }
   @Inject
-  public DagProcArbiterDecorator(Config config, Optional<MultiActiveLeaseArbiter> leaseDeterminationStore,
-      DagProcReminderScheduler dagProcReminderScheduler) throws IOException {
-    super(config, leaseDeterminationStore.get(), String.valueOf(DagProcArbiterDecorator.class));
-    this.dagProcReminderScheduler = dagProcReminderScheduler;
+  public DagProcArbiterDecorator(Config config, DagActionReminderScheduler dagActionReminderScheduler) throws IOException {
+    this(new InstrumentedLeaseArbiterDecorator(config, new MysqlMultiActiveLeaseArbiter(config), DagProcArbiterDecorator.class.getSimpleName()),
+        config, dagActionReminderScheduler);
   }
 
   /**
@@ -59,49 +82,58 @@ public class DagProcArbiterDecorator extends InstrumentedLeaseArbiterDecorator {
       boolean isReminderEvent, boolean skipFlowExecutionIdReplacement) {
     try {
       MultiActiveLeaseArbiter.LeaseAttemptStatus leaseAttemptStatus = this.tryAcquireLease(flowAction, eventTimeMillis, isReminderEvent, skipFlowExecutionIdReplacement);
-      if (leaseAttemptStatus instanceof MultiActiveLeaseArbiter.LeasedToAnotherStatus) {
-        scheduleReminderForEvent((MultiActiveLeaseArbiter.LeasedToAnotherStatus) leaseAttemptStatus, eventTimeMillis);
+      /* Schedule a reminder for the event unless the lease has been completed to safeguard against case lease owner
+      fails to complete lease
+      */
+      if (!(leaseAttemptStatus instanceof MultiActiveLeaseArbiter.NoLongerLeasingStatus)) {
+        scheduleReminderForEvent(leaseAttemptStatus);
         return leaseAttemptStatus;
       }
-    /* Otherwise leaseAttemptStatus instanceof {@link MultiActiveLeaseArbiter.LeaseObtainedStatus/NoLongerLeasingStatus}
-      and no need to do anything
-     */
       return leaseAttemptStatus;
     } catch (SchedulerException e) {
       throw new RuntimeException(e);
     }
   }
 
-  protected void scheduleReminderForEvent(MultiActiveLeaseArbiter.LeasedToAnotherStatus leaseStatus, long triggerEventTimeMillis)
+  @Override
+  public boolean recordLeaseSuccess(LeaseObtainedStatus status)
+      throws IOException {
+    return this.instrumentedMySqlBasedLeaseArbiterDecorator.recordLeaseSuccess(status);
+  }
+
+  protected void scheduleReminderForEvent(MultiActiveLeaseArbiter.LeaseAttemptStatus leaseStatus)
       throws SchedulerException {
-    // TODO: determine which ts to use
-    dagProcReminderScheduler.scheduleReminderJob(leaseStatus.getFlowAction(), leaseStatus.getEventTimeMillis());
+    if (leaseStatus instanceof NoLongerLeasingStatus) {
+      log.error("Attempting to set a reminder for an event that's already completed lease, skipping event");
+      return;
+    }
+    _dagActionReminderScheduler.scheduleReminder(leaseStatus.getFlowAction(). leaseStatus.getMinimumLingerDurationMillis());
 
   }
 
   @Slf4j
-  public class ReminderJob implements Job {
+  public static class ReminderJob implements Job {
     public static final String FLOW_ACTION_TYPE_KEY = "flow.actionType";
-    public static final String DAG_TASK_STREAM = "dag.taskStream";
+    public static final String DAG_MANAGEMENT_KEY = "dag.management";
 
     @Override
     public void execute(JobExecutionContext context) throws JobExecutionException {
       // Get properties from the trigger to create a dagAction
-      String flowName = context.getTrigger().getJobDataMap().getString(ConfigurationKeys.FLOW_NAME_KEY);
-      String flowGroup = context.getTrigger().getJobDataMap().getString(ConfigurationKeys.FLOW_GROUP_KEY);
-      String jobName = context.getTrigger().getJobDataMap().getString(ConfigurationKeys.JOB_NAME_KEY);
-      String flowId = context.getTrigger().getJobDataMap().getString(ConfigurationKeys.FLOW_EXECUTION_ID_KEY);
+      JobDataMap jobDataMap = context.getTrigger().getJobDataMap();
+      String flowName = jobDataMap.getString(ConfigurationKeys.FLOW_NAME_KEY);
+      String flowGroup = jobDataMap.getString(ConfigurationKeys.FLOW_GROUP_KEY);
+      String jobName = jobDataMap.getString(ConfigurationKeys.JOB_NAME_KEY);
+      String flowId = jobDataMap.getString(ConfigurationKeys.FLOW_EXECUTION_ID_KEY);
       DagActionStore.FlowActionType flowActionType = DagActionStore.FlowActionType.valueOf(
-          context.getTrigger().getJobDataMap().getString(FLOW_ACTION_TYPE_KEY));
-       DagManagementTaskStreamImpl dagManagementTaskStream =
-           (DagManagementTaskStreamImpl) context.getTrigger().getJobDataMap().get(DAG_TASK_STREAM);
+          jobDataMap.getString(FLOW_ACTION_TYPE_KEY));
+      DagManagement dagManagement = (DagManagement) jobDataMap.get(DAG_MANAGEMENT_KEY);
 
-      // TODO: add meaningful log statement
-      log.info("Reminder for job " + jobName + " in flow " + flowName + " (" + flowGroup + ") with ID " + flowId);
+      log.info("DagProc reminder triggered for (flowGroup: " + flowGroup + ", flowName: " + flowName
+          + ", flowExecutionId: " + flowId + ", jobName: " + jobName +")");
 
       DagActionStore.DagAction dagAction = new DagActionStore.DagAction(flowGroup, flowName, flowId, jobName, flowActionType);
 
-       dagManagementTaskStream.addDagAction(dagAction);
+       dagManagement.addDagAction(dagAction);
     }
   }
 
@@ -112,12 +144,12 @@ public class DagProcArbiterDecorator extends InstrumentedLeaseArbiterDecorator {
 
   public static String createDagActionReminderKey(String flowName, String flowGroup, String jobName, String flowId,
       DagActionStore.FlowActionType flowActionType) {
-    return String.format("%s.%s.%s.%s.%s", flowName, flowGroup, jobName, flowId, flowActionType);
+    return String.format("%s.%s.%s.%s.%s", flowGroup, flowName, flowId, jobName, flowActionType);
   }
 
-  public static JobDetail createReminderJobDetail(DagManagementTaskStreamImpl taskStream, DagActionStore.DagAction dagAction) {
+  public static JobDetail createReminderJobDetail(DagManagement dagManagement, DagActionStore.DagAction dagAction) {
     JobDataMap dataMap = new JobDataMap();
-    dataMap.put(ReminderJob.DAG_TASK_STREAM, taskStream);
+    dataMap.put(ReminderJob.DAG_MANAGEMENT_KEY, dagManagement);
     dataMap.put(ConfigurationKeys.FLOW_NAME_KEY, dagAction.getFlowName());
     dataMap.put(ConfigurationKeys.FLOW_GROUP_KEY, dagAction.getFlowGroup());
     dataMap.put(ConfigurationKeys.JOB_NAME_KEY, dagAction.getJobName());

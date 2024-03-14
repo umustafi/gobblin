@@ -27,7 +27,7 @@ import org.quartz.JobDataMap;
 import org.testng.annotations.Test;
 
 
-public class FlowTriggerHandlerTest {
+public class FlowTriggerDecoratorTest {
   long eventToRevisit = 123000L;
   long minimumLingerDurationMillis = 2000L;
   String cronExpression = FlowTriggerDecorator.createCronFromDelayPeriod(minimumLingerDurationMillis);

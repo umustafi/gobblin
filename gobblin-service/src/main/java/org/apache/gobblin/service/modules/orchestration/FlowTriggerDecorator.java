@@ -62,7 +62,7 @@ import org.quartz.impl.JobDetailImpl;
  * in failure cases.
  */
 @Slf4j
-public class FlowTriggerDecorator extends InstrumentedLeaseArbiterDecorator {
+public class FlowTriggerDecorator implements MultiActiveLeaseArbiter {
   private Optional<DagActionStore> dagActionStore;
   private final int schedulerMaxBackoffMillis;
   private static Random random = new Random();
@@ -77,7 +77,7 @@ public class FlowTriggerDecorator extends InstrumentedLeaseArbiterDecorator {
   public FlowTriggerDecorator(Config config, Optional<MultiActiveLeaseArbiter> leaseDeterminationStore,
       SchedulerService schedulerService, Optional<DagActionStore> dagActionStore)
       throws IOException {
-    super(config, leaseDeterminationStore.get(), String.valueOf(FlowTriggerDecorator.class));
+    super(config, leaseDeterminationStore.get(), FlowTriggerDecorator.class.getSimpleName());
     this.dagActionStore = dagActionStore;
     this.schedulerMaxBackoffMillis = ConfigUtils.getInt(config, ConfigurationKeys.SCHEDULER_MAX_BACKOFF_MILLIS_KEY,
         ConfigurationKeys.DEFAULT_SCHEDULER_MAX_BACKOFF_MILLIS);
@@ -134,7 +134,7 @@ public class FlowTriggerDecorator extends InstrumentedLeaseArbiterDecorator {
 
   // Called after obtaining a lease to persist the flow action to {@link DagActionStore} and mark the lease as done
   private boolean persistFlowAction(MultiActiveLeaseArbiter.LeaseObtainedStatus leaseStatus) {
-    // TODO: check whether multiActiveLeaseArbiter should be optional or not 
+    // TODO: check whether multiActiveLeaseArbiter should be optional or not
     if (this.dagActionStore.isPresent() && this.multiActiveLeaseArbiter.isPresent()) {
       try {
         DagActionStore.DagAction flowAction = leaseStatus.getFlowAction();
@@ -302,5 +302,18 @@ public class FlowTriggerDecorator extends InstrumentedLeaseArbiterDecorator {
     LocalDateTime localDateTime = getLocalDateTimeFromDelayPeriod(delayPeriodMillis);
     Date date = Date.from(localDateTime.atZone(ZoneId.of("UTC")).toInstant());
     return GobblinServiceJobScheduler.utcDateAsUTCEpochMillis(date);
+  }
+
+  @Override
+  public LeaseAttemptStatus tryAcquireLease(DagActionStore.DagAction flowAction, long eventTimeMillis,
+      boolean isReminderEvent, boolean adoptConsensusFlowExecutionId)
+      throws IOException {
+    return null;
+  }
+
+  @Override
+  public boolean recordLeaseSuccess(LeaseObtainedStatus status)
+      throws IOException {
+    return false;
   }
 }

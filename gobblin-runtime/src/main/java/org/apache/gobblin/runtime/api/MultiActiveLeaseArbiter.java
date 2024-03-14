@@ -20,6 +20,8 @@ package org.apache.gobblin.runtime.api;
 import java.io.IOException;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.AccessLevel;
 
 
 /**
@@ -78,34 +80,46 @@ public interface MultiActiveLeaseArbiter {
    Class used to encapsulate status of lease acquisition attempt and derivations should contain information specific to
    the status that results.
    */
-  abstract class LeaseAttemptStatus {}
+  abstract class LeaseAttemptStatus {
+    public abstract long getMinimumLingerDurationMillis();
+  }
 
-  class NoLongerLeasingStatus extends LeaseAttemptStatus {}
-
-
-  /** `j.u.Function` variant for an operation that may @throw IOException */
-  @FunctionalInterface
-  interface FunctionMayThrowIO<T, R> {
-    R apply(T t) throws IOException;
+  class NoLongerLeasingStatus extends LeaseAttemptStatus {
+    // We do not expect this method to be called for this type of status.
+    @Override
+    public long getMinimumLingerDurationMillis() {
+      throw new UnsupportedOperationException();
+    }
   }
 
   /*
   The participant calling this method acquired the lease for the event in question. `Flow action`'s flow execution id
   is the timestamp associated with the lease and the time the caller obtained the lease is stored within the
-  `leaseAcquisitionTimestamp` field. `completeLeaseRunnable` is a reference to a method that will recordLeaseSuccess
-  for the current LeaseObtainedStatus from a caller without access to the {@link MultiActiveLeaseArbiter}
+  `leaseAcquisitionTimestamp` field. The `multiActiveLeaseArbiter` reference is used to recordLeaseSuccess for the
+  current LeaseObtainedStatus via the completeLease method from a caller without access to the {@link MultiActiveLeaseArbiter}.
   */
   @Data
   class LeaseObtainedStatus extends LeaseAttemptStatus {
     private final DagActionStore.DagAction flowAction;
     private final long leaseAcquisitionTimestamp;
-    protected final FunctionMayThrowIO<LeaseObtainedStatus, Boolean> completeLeaseRunnable;
+    private final long minimumLingerDurationMillis;
+    @Getter(AccessLevel.NONE)
+    private final MultiActiveLeaseArbiter multiActiveLeaseArbiter;
 
     /**
      * @return event time in millis since epoch for the event of this lease acquisition
      */
     public long getEventTimeMillis() {
       return Long.parseLong(flowAction.getFlowExecutionId());
+    }
+
+    /**
+     * Completes the lease referenced by this status object if it has not expired.
+     * @return True if able to complete lease, False otherwise.
+     * @throws IOException
+     */
+    public boolean completeLease() throws IOException {
+      return multiActiveLeaseArbiter.recordLeaseSuccess(this);
     }
   }
 
@@ -118,8 +132,8 @@ public interface MultiActiveLeaseArbiter {
    */
   @Data
   class LeasedToAnotherStatus extends LeaseAttemptStatus {
-    public final DagActionStore.DagAction flowAction;
-    public final long minimumLingerDurationMillis;
+    private final DagActionStore.DagAction flowAction;
+    private final long minimumLingerDurationMillis;
 
     /**
      * Returns event time in millis since epoch for the event whose lease was obtained by another participant.
