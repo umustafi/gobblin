@@ -39,6 +39,7 @@ import org.apache.gobblin.instrumented.Instrumented;
 import org.apache.gobblin.metrics.MetricContext;
 import org.apache.gobblin.metrics.event.EventSubmitter;
 import org.apache.gobblin.runtime.api.DagActionStore;
+import org.apache.gobblin.runtime.api.InstrumentedLeaseArbiter;
 import org.apache.gobblin.runtime.api.MultiActiveLeaseArbiter;
 import org.apache.gobblin.runtime.util.InjectionNames;
 import org.apache.gobblin.service.modules.orchestration.task.DagTask;
@@ -74,7 +75,7 @@ public class DagManagementTaskStreamImpl implements DagManagement, DagTaskStream
 
   @Inject(optional=true)
   protected Optional<DagActionStore> dagActionStore;
-  protected Optional<MultiActiveLeaseArbiter> dagActionExecutionLeaseArbiter;
+  protected Optional<InstrumentedLeaseArbiter> dagActionExecutionLeaseArbiter;
   protected Optional<DagActionReminderScheduler> dagActionReminderScheduler;
   private final boolean isMultiActiveExecutionEnabled;
   @Inject
@@ -85,7 +86,8 @@ public class DagManagementTaskStreamImpl implements DagManagement, DagTaskStream
 
   @Inject
   public DagManagementTaskStreamImpl(Config config, Optional<DagActionStore> dagActionStore,
-      @Named(ConfigurationKeys.EXECUTOR_LEASE_ARBITER_NAME) Optional<MultiActiveLeaseArbiter> dagActionExecutionLeaseArbiter,
+//      Provider<InstrumentedLeaseArbiter> leaseArbiter2Provider,
+      @Named(ConfigurationKeys.EXECUTOR_LEASE_ARBITER_NAME) Optional<InstrumentedLeaseArbiter> dagActionExecutionLeaseArbiter,
       Optional<DagActionReminderScheduler> dagActionReminderScheduler,
       @Named(InjectionNames.MULTI_ACTIVE_EXECUTION_ENABLED) boolean isMultiActiveExecutionEnabled) {
     this.config = config;

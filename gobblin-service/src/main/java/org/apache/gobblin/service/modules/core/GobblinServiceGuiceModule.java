@@ -205,21 +205,22 @@ public class GobblinServiceGuiceModule implements Module {
     OptionalBinder.newOptionalBinder(binder, DagProcessingEngine.class);
     OptionalBinder.newOptionalBinder(binder, DagActionReminderScheduler.class);
     if (serviceConfig.isDagProcessingEngineEnabled()) {
+      // Multi-active execution is only compatible with dagProcessingEngine configuration
+      OptionalBinder<InstrumentedLeaseArbiter> instrumentedLeaseArbiterOptionalBinder = OptionalBinder.newOptionalBinder(binder, InstrumentedLeaseArbiter.class);
+//      instrumentedLeaseArbiterOptionalBinder
+      if (serviceConfig.isMultiActiveExecutionEnabled()) {
+        binder.bind(InstrumentedLeaseArbiter.class).annotatedWith(Names.named(
+            ConfigurationKeys.EXECUTOR_LEASE_ARBITER_NAME)).toProvider(
+            DagActionExecutionMultiActiveLeaseArbiterFactory.class);
+        // TODO does this need to be bound before dagManagement is initialized?
+        binder.bind(DagActionReminderScheduler.class);
+      }
+
       binder.bind(DagManagement.class).to(DagManagementTaskStreamImpl.class);
       binder.bind(DagTaskStream.class).to(DagManagementTaskStreamImpl.class);
       binder.bind(DagManagementStateStore.class).to(MostlyMySqlDagManagementStateStore.class);
       binder.bind(DagProcFactory.class);
       binder.bind(DagProcessingEngine.class);
-
-      // Multi-active execution is only compatible with dagProcessingEngine configuration
-      OptionalBinder.newOptionalBinder(binder, InstrumentedLeaseArbiter.class);
-      if (serviceConfig.isMultiActiveExecutionEnabled()) {
-        binder.bind(InstrumentedLeaseArbiter.class).annotatedWith(Names.named(
-            ConfigurationKeys.EXECUTOR_LEASE_ARBITER_NAME)).toProvider(
-                DagActionExecutionMultiActiveLeaseArbiterFactory.class);
-        // TODO does this need to be bound before dagManagement is initialized?
-        binder.bind(DagActionReminderScheduler.class);
-      }
     }
 
     binder.bind(FlowConfigsResource.class);
